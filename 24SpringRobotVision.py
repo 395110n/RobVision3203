@@ -48,7 +48,6 @@ class KeyboardPlayerPyGame(Player):
         
         self.position_history = []
         self.pos_dict = {}
-        self.competition = False
         self.goal = None
         self.constant = 90/37
         self.position = np.zeros(2)
@@ -83,9 +82,7 @@ class KeyboardPlayerPyGame(Player):
             pygame.K_UP: Action.FORWARD,
             pygame.K_DOWN: Action.BACKWARD,
             pygame.K_SPACE: Action.CHECKIN,
-            pygame.K_ESCAPE: Action.QUIT,
-            pygame.K_LSHIFT: "start compute",
-            pygame.K_RSHIFT: "turn competition"
+            pygame.K_ESCAPE: Action.QUIT
         }
 
     def act(self):
@@ -103,10 +100,7 @@ class KeyboardPlayerPyGame(Player):
                     self.prevFPV = self.fpv
                     # If yes, bitwise OR the current action with the new one
                     # This allows for multiple actions to be combined into a single action
-                    if event.key != pygame.K_LSHIFT and event.key != pygame.K_RSHIFT:
-                        self.last_act |= self.keymap[event.key]
-
-                    
+                    self.last_act |= self.keymap[event.key]
                 else:
                     # If a key is pressed that is not mapped to an action, then display target images
                     self.show_target_images()
@@ -135,14 +129,8 @@ class KeyboardPlayerPyGame(Player):
                 if event.key in self.keymap:
                     # If yes, bitwise XOR the current action with the new one
                     # This allows for updating the accumulated actions to reflect the current sate of the keyboard inputs accurately
-                    if event.key != pygame.K_LSHIFT and event.key != pygame.K_RSHIFT:
-                        self.last_act ^= self.keymap[event.key]
-                    else:
-                        if event.key == pygame.K_LSHIFT:
-                            self.pre_nav_compute()
-                        if event.key == pygame.K_RSHIFT:
-                            self.competition = not self.competition
-                            print(self.competition)
+                    self.last_act ^= self.keymap[event.key]
+                    
         # print(self.position)
         if self._state:
             self.draw_positions()
@@ -289,9 +277,7 @@ class KeyboardPlayerPyGame(Player):
             # below 3 code lines to be run only once to generate the codebook
             # Compute sift features for images in the database
             print("in prev_nav_compute")
-            sift_descriptors = None
-            if not self.competition:
-                sift_descriptors = self.compute_sift_features()
+            sift_descriptors = self.compute_sift_features()
 
             # KMeans clustering algorithm is used to create a visual vocabulary, also known as a codebook,
             # from the computed SIFT descriptors.
@@ -304,37 +290,29 @@ class KeyboardPlayerPyGame(Player):
             # This fits the KMeans model to the SIFT descriptors, clustering them into n_clusters clusters based on their feature vectors
 
             # TODO: try tuning the function parameters for better performance
-            if not self.competition:
-                codebook = KMeans(n_clusters = 64, init='random', n_init=3, verbose=1).fit(sift_descriptors)
-                pickle.dump(codebook, open("codebook.pkl", "wb"))
-            else:
-                with open("codebook.pkl", "rb") as f:
-                    codebook = pickle.load(f)
+            codebook = KMeans(n_clusters = 64, init='random', n_init=3, verbose=1).fit(sift_descriptors)
+            pickle.dump(codebook, open("codebook.pkl", "wb"))
+
 
             # Build a BallTree for fast nearest neighbor search
             # We create this tree to efficiently perform nearest neighbor searches later on which will help us navigate and reach the target location
             
             # TODO: try tuning the leaf size for better performance
-            if not self.competition:
-                tree = BallTree(self.database, leaf_size=60)
-                with open('ball_tree_model.pkl', 'wb') as f:
-                    pickle.dump(tree, f)
-                self.tree = tree
-            else:
-                with open('ball_tree_model.pkl', 'rb') as f:
-                    self.tree = pickle.load(f)
+            tree = BallTree(self.database, leaf_size=60)
+            with open('ball_tree_model.pkl', 'wb') as f:
+                pickle.dump(tree, f)
+            self.tree = tree
+
             # Get the neighbor nearest to the front view of the target image and set it as goal
-            if self.competition:
-                targets = self.get_target_images()
-                index = self.get_neighbor(targets[0])[0][1]
-                self.goal = index
-                print(f'Goal ID: {self.goal}')
+            targets = self.get_target_images()
+            index = self.get_neighbor(targets[0])[0][1]
+            self.goal = index
+            print(f'Goal ID: {self.goal}')
 
     def pre_navigation(self):
         """
         Computations to perform before entering navigation and after exiting exploration
         """
-        self.competition=True
         self.position = np.zeros(2)
         self.direction = np.array([0,1])
         super(KeyboardPlayerPyGame, self).pre_navigation()
